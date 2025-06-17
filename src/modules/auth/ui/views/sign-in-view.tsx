@@ -16,6 +16,10 @@ import { useForm } from "react-hook-form";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { OctagonAlertIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { authClient } from "@/lib/auth-client";
+import { useAuth } from "@/components/auth-context";
 
 const formSchema = z.object({
   email: z.string().email(),
@@ -25,6 +29,10 @@ const formSchema = z.object({
 });
 
 export const SignInView = () => {
+  const router = useRouter();
+  const { signIn } = useAuth();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -33,12 +41,32 @@ export const SignInView = () => {
     },
   });
 
+  const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    setError(null);
+    setPending(true);
+    try {
+      // Use only the context's signIn, which sets the cookie and state
+      await signIn({ email: data.email, password: data.password });
+      router.push("/");
+    } catch (err: any) {
+      let message = "An unexpected error occurred";
+      if (typeof err?.message === "string") {
+        message = err.message;
+      } else if (typeof err === "string") {
+        message = err;
+      }
+      setError(message);
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
           <Form {...form}>
-            <form className="p-6 md:p-8">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 md:p-8">
               <div className="flex flex-col gap-6">
                 <div className="flex flex-col items-center text-center">
                   <h1 className="text-2xl font-bold">Welcome back</h1>
@@ -84,13 +112,13 @@ export const SignInView = () => {
                     )}
                   />
                 </div>
-                {true && (
+                {!!error && (
                   <Alert className="bg-destructive/10 border-none">
                     <OctagonAlertIcon className="h-4 w-4 !text-destructive" />
-                    <AlertTitle>Error</AlertTitle>
+                    <AlertTitle>{error}</AlertTitle>
                   </Alert>
                 )}
-                <Button type="submit" className="w-full">
+                <Button disabled={pending} type="submit" className="w-full">
                   Sign in
                 </Button>
                 <div
@@ -102,10 +130,20 @@ export const SignInView = () => {
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Button variant="outline" className="w-full" type="button">
+                  <Button
+                    disabled={pending}
+                    variant="outline"
+                    className="w-full"
+                    type="button"
+                  >
                     Google
                   </Button>
-                  <Button variant="outline" className="w-full" type="button">
+                  <Button
+                    disabled={pending}
+                    variant="outline"
+                    className="w-full"
+                    type="button"
+                  >
                     Github
                   </Button>
                 </div>
