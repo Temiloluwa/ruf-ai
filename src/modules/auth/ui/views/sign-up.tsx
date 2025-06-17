@@ -18,8 +18,7 @@ import { OctagonAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { authClient } from "@/lib/auth-client";
-import { useAuth } from "@/components/auth-context";
+import { useSignUp, useSignIn } from "./clerk-hooks";
 
 const formSchema = z
   .object({
@@ -39,12 +38,26 @@ const formSchema = z
     path: ["confirmPassword"],
   });
 
-export const SignUpView = () => {
+function isClerkError(err: unknown): err is { errors: { message: string }[] } {
+  if (typeof err !== "object" || err === null) return false;
+  const maybe = err as Record<string, unknown>;
+  return (
+    Array.isArray(maybe.errors) && typeof maybe.errors[0]?.message === "string"
+  );
+}
+
+export const SignUp = () => {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const signUpCtx = useSignUp();
+  const signInCtx = useSignIn();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const form = useForm({
+  const form = useForm<{
+    name: string;
+    email: string;
+    password: string;
+    confirmPassword: string;
+  }>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
@@ -58,40 +71,31 @@ export const SignUpView = () => {
     setError(null);
     setPending(true);
     try {
-      await authClient.signUp.email(
-        {
-          name: data.name,
-          email: data.email,
+      if (!signUpCtx || !signUpCtx.signUp) throw new Error("Sign up not ready");
+      const result = await signUpCtx.signUp.create({
+        emailAddress: data.email,
+        password: data.password,
+      });
+      if (result.status === "complete") {
+        if (!signInCtx || !signInCtx.signIn)
+          throw new Error("Sign in not ready");
+        await signInCtx.signIn.create({
+          identifier: data.email,
           password: data.password,
-        },
-        {
-          onSuccess: async () => {
-            // Automatically sign in after successful sign-up
-            await signIn({ email: data.email, password: data.password });
-            router.push("/");
-            setPending(false);
-          },
-          onError: ({ error }) => {
-            // Handle Drizzle/Next API error shape and fallback
-            let message = "An unexpected error occurred";
-            if (typeof error?.message === "string") {
-              message = error.message;
-            } else if (typeof error === "string") {
-              message = error;
-            }
-            setError(message);
-            setPending(false);
-          },
-        },
-      );
-    } catch (err: any) {
-      let message = "An unexpected error occurred";
-      if (typeof err?.message === "string") {
+        });
+        router.push("/");
+      } else {
+        setError("Sign up failed.");
+      }
+    } catch (err: unknown) {
+      let message = "Sign up failed";
+      if (isClerkError(err)) {
+        message = err.errors[0].message;
+      } else if (err instanceof Error) {
         message = err.message;
-      } else if (typeof err === "string") {
-        message = err;
       }
       setError(message);
+    } finally {
       setPending(false);
     }
   };

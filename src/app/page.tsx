@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { HomeAuthStatus } from "../components/home-auth-status";
 
 export default function Home() {

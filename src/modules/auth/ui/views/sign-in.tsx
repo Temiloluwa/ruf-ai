@@ -18,8 +18,7 @@ import { OctagonAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { authClient } from "@/lib/auth-client";
-import { useAuth } from "@/components/auth-context";
+import { useSignIn } from "./clerk-hooks";
 
 const formSchema = z.object({
   email: z.string().email(),
@@ -28,12 +27,23 @@ const formSchema = z.object({
   }),
 });
 
-export const SignInView = () => {
+function isClerkError(err: unknown): err is { errors: { message: string }[] } {
+  if (typeof err !== "object" || err === null) return false;
+  const maybe = err as Record<string, unknown>;
+  return (
+    Array.isArray(maybe.errors) && typeof maybe.errors[0]?.message === "string"
+  );
+}
+
+export const SignIn = () => {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const signInCtx = useSignIn();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const form = useForm({
+  const form = useForm<{
+    email: string;
+    password: string;
+  }>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       email: "",
@@ -45,15 +55,24 @@ export const SignInView = () => {
     setError(null);
     setPending(true);
     try {
-      // Use only the context's signIn, which sets the cookie and state
-      await signIn({ email: data.email, password: data.password });
-      router.push("/");
-    } catch (err: any) {
-      let message = "An unexpected error occurred";
-      if (typeof err?.message === "string") {
+      if (!signInCtx || !signInCtx.signIn) throw new Error("Sign in not ready");
+      const result = await signInCtx.signIn.create({
+        identifier: data.email,
+        password: data.password,
+      });
+      if (result.status === "complete") {
+        router.push("/");
+      } else if (result.status === "needs_first_factor") {
+        setError("Additional authentication required.");
+      } else {
+        setError("Sign in failed.");
+      }
+    } catch (err: unknown) {
+      let message = "Sign in failed";
+      if (isClerkError(err)) {
+        message = err.errors[0].message;
+      } else if (err instanceof Error) {
         message = err.message;
-      } else if (typeof err === "string") {
-        message = err;
       }
       setError(message);
     } finally {
