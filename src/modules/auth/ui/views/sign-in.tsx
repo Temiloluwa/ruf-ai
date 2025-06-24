@@ -19,9 +19,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useSignIn } from "./clerk-hooks";
+import type { OAuthStrategy } from "@clerk/types";
 
 const formSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().min(2, {
+    message: "Email or username is required",
+  }),
   password: z.string().min(2, {
     message: "Password is required",
   }),
@@ -41,12 +44,12 @@ export const SignIn = () => {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const form = useForm<{
-    email: string;
+    identifier: string;
     password: string;
   }>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: "",
+      identifier: "",
       password: "",
     },
   });
@@ -57,7 +60,7 @@ export const SignIn = () => {
     try {
       if (!signInCtx || !signInCtx.signIn) throw new Error("Sign in not ready");
       const result = await signInCtx.signIn.create({
-        identifier: data.email,
+        identifier: data.identifier,
         password: data.password,
       });
       if (result.status === "complete") {
@@ -80,6 +83,28 @@ export const SignIn = () => {
     }
   };
 
+  // Handler for social login
+  const handleSocialSignIn = async (provider: "google" | "github") => {
+    setPending(true);
+    setError(null);
+    try {
+      if (!signInCtx || !signInCtx.signIn) throw new Error("Sign in not ready");
+      const strategy =
+        provider === "google"
+          ? ("oauth_google" as OAuthStrategy)
+          : ("oauth_github" as OAuthStrategy);
+      await signInCtx.signIn.authenticateWithRedirect({
+        strategy,
+        redirectUrl: "/",
+        redirectUrlComplete: "/",
+      });
+    } catch (err: unknown) {
+      setError("Social sign in failed");
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <Card className="overflow-hidden p-0">
@@ -96,14 +121,14 @@ export const SignIn = () => {
                 <div className="grid gap-3">
                   <FormField
                     control={form.control}
-                    name="email"
+                    name="identifier"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email</FormLabel>
+                        <FormLabel>Email or Username</FormLabel>
                         <FormControl>
                           <Input
-                            type="email"
-                            placeholder="example@ruf.ai"
+                            type="text"
+                            placeholder="Email or username"
                             {...field}
                           />
                         </FormControl>
@@ -154,6 +179,7 @@ export const SignIn = () => {
                     variant="outline"
                     className="w-full"
                     type="button"
+                    onClick={() => handleSocialSignIn("google")}
                   >
                     Google
                   </Button>
@@ -162,6 +188,7 @@ export const SignIn = () => {
                     variant="outline"
                     className="w-full"
                     type="button"
+                    onClick={() => handleSocialSignIn("github")}
                   >
                     Github
                   </Button>
